@@ -8,3 +8,7 @@ edition = "2018"
 
 [dependencies]
 actix-web = "~3.0.2"
+
+[dependencies.rusqlite]
+version = "~0.24.0",
+features = ["functions", "blob"]

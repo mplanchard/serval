@@ -1,3 +1,4 @@
+mod storage;
 mod traits;
 
 fn main() {
