@@ -1,2 +1,1 @@
-mod file;
-mod sqlite;
+pub mod sqlite;
