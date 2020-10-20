@@ -1,33 +1,34 @@
 use std::collections::HashMap;
-use std::iter::FromIterator;
 
 use serde::Deserialize;
 
-pub type BackendConfig = HashMap<String, String>;
-pub type BackendConfigs = HashMap<String, BackendConfig>;
+#[derive(Deserialize)]
+pub struct BackendConfig {
+    pub url: String,
+}
+impl BackendConfig {
+    pub fn new<S: Into<String>>(url: S) -> Self {
+        Self { url: url.into() }
+    }
+}
 
 #[derive(Deserialize)]
 pub struct Config {
     pub backend: String,
-    pub backends: BackendConfigs,
+    pub backends: HashMap<String, BackendConfig>,
 }
 impl Default for Config {
     fn default() -> Self {
         Self {
             backend: "sqlite".into(),
-            backends: default_backend_configs(),
+            backends: HashMap::from,
         }
     }
 }
-
-fn default_backend_configs() -> BackendConfigs {
-    // Define the config as a slice of tuples
-    let config = [("sqlite", [("path", "./serval.sqlite")])];
-    // Convert it to a hashmap
-    HashMap::from_iter(config.iter().map(|i| *i).map(|(k, v)| {
-        (
-            k.into(),
-            HashMap::from_iter(v.iter().map(|i| *i).map(|(k, v)| (k.into(), v.into()))),
-        )
-    }))
+impl Config {
+    fn default_backend_configs() -> HashMap<String, BackendConfig> {
+        let mut configs = HashMap::new();
+        configs.insert("sqlite".into(), BackendConfig::new("./serval.sqlite"));
+        configs
+    }
 }

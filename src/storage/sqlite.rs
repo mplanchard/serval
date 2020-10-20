@@ -1,66 +1,49 @@
 //! SQLite storage backend
 
-use rusqlite::{params, Connection, Error as SqliteError, NO_PARAMS};
+use async_trait::async_trait;
 use serde::Deserialize;
+use sqlx;
 use std::convert::TryFrom;
 
 use crate::config::BackendConfig;
 use crate::error::ConfigError;
 use crate::error::PackageBackendError;
 use crate::package::{
-    PackageBackend, PackageBackendConnector, PackageBackendInitializer, PackageData,
-    PackageInfo, PackageQuery, PackageRegistry,
+    PackageBackend, PackageBackendExecutor, PackageData, PackageInfo, PackageQuery,
+    PackageRegistry,
 };
 
-#[derive(Clone, Deserialize, Debug)]
-pub struct SqliteConfig {
+pub struct PackageBackendSqlite {
     path: String,
 }
-impl SqliteConfig {
-    fn new<S: Into<String>>(path: S) -> Self {
-        SqliteConfig { path: path.into() }
-    }
-}
-impl TryFrom<BackendConfig> for SqliteConfig {
-    type Error = ConfigError;
-
-    fn try_from(value: BackendConfig) -> Result<Self, Self::Error> {
-        Ok(SqliteConfig {
-            path: value.get("path").ok_or(ConfigError::Load)?.into(),
-        })
-    }
-}
-
-pub struct SqliteConnector {
-    path: String,
-}
-impl PackageBackendConnector for SqliteConnector {
+impl PackageBackend for PackageBackendSqlite {
     const NAME: &'static str = "sqlite";
-    type Config = SqliteConfig;
-    type Initializer = SqliteInitializer;
+    type Executor = PackageBackendSqliteExecutor;
 
-    fn connect(self) -> Result<SqliteInitializer, PackageBackendError> {
-        Ok(SqliteInitializer::new(Connection::open(&self.path)?))
+    fn connect(self) -> Result<PackageBackendSqliteExecutor, PackageBackendError> {
+        todo!()
     }
 
-    fn new(config: Self::Config) -> Self {
-        Self { path: config.path }
+    fn config(config: BackendConfig) -> Self {
+        Self { path: config.url }
     }
 }
 
-pub struct SqliteInitializer {
-    connection: Connection,
+pub struct PackageBackendSqliteExecutor {
+    connection: sqlx::SqlitePool,
 }
-impl SqliteInitializer {
-    fn new(connection: Connection) -> Self {
+impl PackageBackendSqliteExecutor {
+    fn new(connection: sqlx::SqlitePool) -> Self {
         Self { connection }
     }
 }
-impl PackageBackendInitializer for SqliteInitializer {
-    fn init<R: PackageRegistry + 'static>(
-        self,
-        registry: R,
-    ) -> Result<Box<dyn PackageBackend<Registry = R>>, PackageBackendError> {
+
+#[async_trait]
+impl PackageBackendExecutor for PackageBackendSqliteExecutor {
+    async fn init(
+        &self,
+        registry: &impl PackageRegistry,
+    ) -> Result<(), PackageBackendError> {
         self.connection.execute_batch(&format!(
             r#"CREATE TABLE IF NOT EXISTS {name} (
                 id INTEGER PRIMARY KEY,
@@ -85,24 +68,11 @@ impl PackageBackendInitializer for SqliteInitializer {
         ))?;
         Ok(Box::new(SqliteBackend::new(self.connection, registry)))
     }
-}
-
-pub struct SqliteBackend<R: PackageRegistry> {
-    connection: Connection,
-    registry: R,
-}
-impl<R: PackageRegistry> SqliteBackend<R> {
-    fn new(connection: Connection, registry: R) -> Self {
-        Self {
-            connection,
-            registry,
-        }
-    }
-}
-impl<R: PackageRegistry> PackageBackend for SqliteBackend<R> {
-    type Registry = R;
-
-    fn save(&mut self, data: PackageData) -> Result<PackageInfo, PackageBackendError> {
+    async fn save(
+        &self,
+        registry: &impl PackageRegistry,
+        data: PackageData,
+    ) -> Result<PackageInfo, PackageBackendError> {
         dbg!("here!");
         println!("here!");
         let tx = self.connection.transaction()?;
@@ -135,11 +105,17 @@ impl<R: PackageRegistry> PackageBackend for SqliteBackend<R> {
         Ok(data.info)
     }
 
-    fn all(&self) -> Result<Vec<PackageInfo>, PackageBackendError> {
+    async fn all(
+        &self,
+        registry: &impl PackageRegistry,
+    ) -> Result<Vec<PackageInfo>, PackageBackendError> {
         todo!()
     }
 
-    fn count(&self) -> Result<i64, PackageBackendError> {
+    async fn count(
+        &self,
+        registry: &impl PackageRegistry,
+    ) -> Result<i64, PackageBackendError> {
         Ok(self.connection.query_row(
             &format!(
                 "SELECT count(*) from {table}",
@@ -150,22 +126,35 @@ impl<R: PackageRegistry> PackageBackend for SqliteBackend<R> {
         )?)
     }
 
-    fn find(
+    async fn find(
         &self,
+        registry: &impl PackageRegistry,
         query: PackageQuery,
     ) -> Result<Vec<PackageInfo>, PackageBackendError> {
         todo!()
     }
 
-    fn get(&self, info: PackageInfo) -> Result<PackageData, PackageBackendError> {
+    async fn get(
+        &self,
+        registry: &impl PackageRegistry,
+        info: PackageInfo,
+    ) -> Result<PackageData, PackageBackendError> {
         todo!()
     }
 
-    fn remove(&self, info: PackageInfo) -> Result<PackageInfo, PackageBackendError> {
+    async fn remove(
+        &self,
+        registry: &impl PackageRegistry,
+        info: PackageInfo,
+    ) -> Result<PackageInfo, PackageBackendError> {
         todo!()
     }
 
-    fn replace(&self, data: PackageData) -> Result<PackageInfo, PackageBackendError> {
+    async fn replace(
+        &self,
+        registry: &impl PackageRegistry,
+        data: PackageData,
+    ) -> Result<PackageInfo, PackageBackendError> {
         todo!()
     }
 }

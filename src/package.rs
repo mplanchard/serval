@@ -1,10 +1,8 @@
-use crate::error::{ConfigError, PackageBackendError};
-use actix_web::Scope;
+use async_trait::async_trait;
 use std::collections::HashMap;
-use std::convert::TryFrom;
-use std::error;
 
 use crate::config::BackendConfig;
+use crate::error::PackageBackendError;
 
 pub struct PackageData {
     pub data: Vec<u8>,
@@ -39,42 +37,59 @@ pub struct PackageQuery {
     meta: Option<HashMap<String, String>>,
 }
 
-pub trait PackageRegistry {
+pub trait PackageRegistry: Send {
     const NAME: &'static str;
     const STORAGE_NAMESPACE: &'static str;
 
     fn parse_package_data(data: Vec<u8>) -> PackageData;
-
-    fn register_api(scope: Scope) -> Scope;
-}
-
-pub trait PackageBackendConnector {
-    const NAME: &'static str;
-    type Config: TryFrom<BackendConfig, Error = ConfigError>;
-    type Initializer: PackageBackendInitializer;
-
-    fn new(config: Self::Config) -> Self;
-
-    fn connect(self) -> Result<Self::Initializer, PackageBackendError>;
-}
-
-pub trait PackageBackendInitializer {
-    fn init<R: PackageRegistry + 'static>(
-        self,
-        registry: R,
-    ) -> Result<Box<dyn PackageBackend<Registry = R>>, PackageBackendError>;
 }
 
 pub trait PackageBackend {
-    type Registry: PackageRegistry;
-    fn save(&mut self, data: PackageData) -> Result<PackageInfo, PackageBackendError>;
-    fn all(&self) -> Result<Vec<PackageInfo>, PackageBackendError>;
-    fn count(&self) -> Result<i64, PackageBackendError>;
-    fn find(
+    const NAME: &'static str;
+    type Executor: PackageBackendExecutor;
+
+    fn config(config: BackendConfig) -> Self;
+
+    fn connect(self) -> Result<Self::Executor, PackageBackendError>;
+}
+
+#[async_trait]
+pub trait PackageBackendExecutor {
+    async fn init(
         &self,
-        query: PackageQuery,
+        registry: &impl PackageRegistry,
+    ) -> Result<(), PackageBackendError>;
+    async fn save(
+        &self,
+        registry: &impl PackageRegistry,
+        data: PackageData,
+    ) -> Result<PackageInfo, PackageBackendError>;
+    async fn all(
+        &self,
+        registry: &impl PackageRegistry,
     ) -> Result<Vec<PackageInfo>, PackageBackendError>;
-    fn get(&self, info: PackageInfo) -> Result<PackageData, PackageBackendError>;
-    fn remove(&self, info: PackageInfo) -> Result<PackageInfo, PackageBackendError>;
-    fn replace(&self, data: PackageData) -> Result<PackageInfo, PackageBackendError>;
+    async fn count(
+        &self,
+        registry: &impl PackageRegistry,
+    ) -> Result<i64, PackageBackendError>;
+    async fn find(
+        &self,
+        registry: &impl PackageRegistry,
+        query: &PackageQuery,
+    ) -> Result<Vec<PackageInfo>, PackageBackendError>;
+    async fn get(
+        &self,
+        registry: &impl PackageRegistry,
+        info: &PackageInfo,
+    ) -> Result<PackageData, PackageBackendError>;
+    async fn remove(
+        &self,
+        registry: &impl PackageRegistry,
+        info: &PackageInfo,
+    ) -> Result<PackageInfo, PackageBackendError>;
+    async fn replace(
+        &self,
+        registry: &impl PackageRegistry,
+        data: &PackageData,
+    ) -> Result<PackageInfo, PackageBackendError>;
 }
